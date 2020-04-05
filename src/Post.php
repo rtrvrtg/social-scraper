@@ -36,11 +36,25 @@ class Post {
   protected $userName;
 
   /**
+   * Display name for the user.
+   *
+   * @var string
+   */
+  protected $userDisplayName;
+
+  /**
    * URL of the user that posted this post.
    *
    * @var string
    */
   protected $userUrl;
+
+  /**
+   * URL of the user's avatar.
+   *
+   * @var string
+   */
+  protected $userAvatarUrl;
 
   /**
    * Created timestamp for this post.

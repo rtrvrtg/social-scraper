@@ -2,7 +2,10 @@
 
 namespace Rtrvrtg\SocialScraper\Scraper;
 
+use Masterminds\HTML5;
 use Rtrvrtg\SocialScraper\Scraper\GenericScraper;
+use Rtrvrtg\SocialScraper\Post;
+use Rtrvrtg\SocialScraper\PostList;
 
 /**
  * Fetches posts from Twitter.
@@ -69,8 +72,29 @@ class Twitter extends GenericScraper {
     $this->referrer = 'https://twitter.com/' . $user . '/status/' . $post_id;
     $this->doBootstrapQuery('status', $user, $post_id);
     $result = $this->doHttp('get', 'https://api.twitter.com/2/timeline/conversation/' . $post_id . '.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_composer_source=true&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&simple_quoted_tweets=true&count=20&ext=mediaStats%2ChighlightedLabel%2CcameraMoment');
+
     if (!empty($result)) {
-      return json_decode($result, TRUE);
+      $raw = json_decode($result, TRUE);
+      $tweet = $raw['globalObjects']['tweets'][$post_id];
+      $user_id = $tweet['user_id'];
+      $user_info = $raw['globalObjects']['users'][$user_id];
+
+      return new Post([
+        'service' => 'twitter',
+        'postId' => $tweet['id_str'],
+        'postUrl' => 'https://twitter.com/' . $user . '/status/' . $post_id,
+        'userName' => $user_info['screen_name'],
+        'userDisplayName' => $user_info['name'],
+        'userUrl' => 'https://twitter.com/' . $user_info['screen_name'],
+        'userAvatarUrl' => $user_info['profile_image_url_https'],
+        'created' => strtotime($tweet['created_at']),
+        'text' => $tweet['full_text'],
+        'accessibilityCaption' => '',
+        'images' => [],
+        'videos' => [],
+        'intents' => [],
+        'raw' => $tweet,
+      ]);
     }
     return FALSE;
   }
@@ -85,8 +109,69 @@ class Twitter extends GenericScraper {
     $cursor = '';
     $user_id = $this->userIdCache[$user_name];
     $result = $this->doHttp('get', 'https://twitter.com/i/profiles/show/' . $user_name . '/timeline/tweets?' . (!empty($cursor) ? 'cursor=' . $cursor : ''));
+
     if (!empty($result)) {
-      return json_decode($result, TRUE);
+      $raw = json_decode($result, TRUE);
+
+      // Necessary to get XPath to work.
+      // @see https://github.com/Masterminds/html5-php/issues/123
+      $html5 = new HTML5([
+        'disable_html_ns' => TRUE,
+      ]);
+      $dom = $html5->loadHTML($raw['items_html'] ?? '');
+
+      $xpath = new \DOMXPath($dom);
+      $post_items = $xpath->query("//li[contains(@class, 'stream-item')]");
+      $posts = [];
+      if ($post_items->count() > 0) {
+        foreach ($post_items as $post_item) {
+          $post_id = $post_item->getAttribute('data-item-id');
+
+          $internal_tweet = $xpath->query(
+            './div[contains(@class, "js-stream-tweet")]',
+            $post_item
+          );
+          print $internal_tweet[0]->ownerDocument->saveXML($internal_tweet[0]) . PHP_EOL;
+          $text_content = $xpath->query(
+            './div[@class="content"]//p[contains(@class, "tweet-text")]',
+            $internal_tweet[0]
+          );
+          $avatar = $xpath->query(
+            './div[@class="content"]//img[contains(@class, "js-action-profile-avatar")]',
+            $internal_tweet[0]
+          );
+          $timestamp = $xpath->query(
+            './div[@class="content"]//span[contains(@class, "js-short-timestamp")]',
+            $internal_tweet[0]
+          );
+
+          $post_user_name = $internal_tweet[0]->getAttribute('data-screen-name');
+          $post_user_display_name = $internal_tweet[0]->getAttribute('data-name');
+
+          $posts[] = new Post([
+            'service' => 'twitter',
+            'postId' => $post_id,
+            'postUrl' => 'https://twitter.com/' . $post_user_name . '/status/' . $post_id,
+            'userName' => $post_user_name,
+            'userDisplayName' => $post_user_display_name,
+            'userUrl' => 'https://twitter.com/' . $post_user_name,
+            'userAvatarUrl' => $avatar[0]->getAttribute('src'),
+            'created' => intval($timestamp[0]->getAttribute('data-time')),
+            'text' => $text_content->count() > 0 ? $text_content[0]->textContent : '',
+            'accessibilityCaption' => '',
+            'images' => [],
+            'videos' => [],
+            'intents' => [],
+            'raw' => $post_item->ownerDocument->saveXML($post_item),
+          ]);
+        }
+      }
+
+      return new PostList([
+        'posts' => $posts,
+        'prevCursor' => $raw['min_position'],
+        'nextCursor' => $raw['max_position'],
+      ]);
     }
     return FALSE;
   }

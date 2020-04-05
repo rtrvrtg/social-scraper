@@ -40,26 +40,26 @@ class PostList {
   /**
    * Magic get function.
    */
-  public function __get($name) {
-    if (property_exists($this, $name) && !empty($this->${name})) {
-      return $this->${name};
+  public function __get($prop) {
+    if (property_exists($this, $prop) && !empty($this->{$prop})) {
+      return $this->{$prop};
     }
   }
 
   /**
    * Magic set function.
    */
-  public function __set($name, $value) {
-    if (property_exists($this, $name)) {
-      $this->${name} = $value;
+  public function __set($prop, $value) {
+    if (property_exists($this, $prop)) {
+      $this->{$prop} = $value;
     }
   }
 
   /**
    * Magic isset function.
    */
-  public function __isset($name) {
-    return property_exists($this, $name) && !empty($this->${name});
+  public function __isset($prop) {
+    return property_exists($this, $prop) && !empty($this->{$prop});
   }
 
 }
