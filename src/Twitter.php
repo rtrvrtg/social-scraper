@@ -31,6 +31,13 @@ class Twitter extends GenericScraper {
   protected $isJson;
 
   /**
+   * Cache linking usernames to user IDs.
+   *
+   * @var array
+   */
+  protected $userIdCache = [];
+
+  /**
    * {@inheritdoc}
    */
   public function __construct() {
@@ -71,8 +78,17 @@ class Twitter extends GenericScraper {
   /**
    * Fetches a list of user posts.
    */
-  public function userList() {
-    $this->referrer = 'https://twitter.com/' . $user;
+  public function userList($user_name) {
+    $this->referrer = 'https://twitter.com/' . $user_name;
+    $this->doBootstrapQuery('profile', $user_name);
+    $user_id = '';
+    $cursor = '';
+    $user_id = $this->userIdCache[$user_name];
+    $result = $this->doHttp('get', 'https://twitter.com/i/profiles/show/' . $user_name . '/timeline/tweets?' . (!empty($cursor) ? 'cursor=' . $cursor : ''));
+    if (!empty($result)) {
+      return json_decode($result, TRUE);
+    }
+    return FALSE;
   }
 
   /**
@@ -101,6 +117,10 @@ class Twitter extends GenericScraper {
     }
     elseif ($type === 'profile') {
       $markup = $this->doHttp('GET', 'https://twitter.com/i/profiles/show/' . $user . '/timeline/tweets');
+      $user_id = $this->findUserIdInHtml($markup, $user);
+      if (!empty($user_id)) {
+        $this->userIdCache[$user] = $user_id;
+      }
     }
     else {
       $markup = $this->doHttp('GET', 'https://twitter.com/i/search/timeline?f=tweets&vertical=default&q=' . $query . '&src=tyah&reset_error_state=false');
@@ -117,6 +137,18 @@ class Twitter extends GenericScraper {
     if (!empty($bearer_token)) {
       $this->bearerToken = $bearer_token;
     }
+  }
+
+  /**
+   * Find the main JS URL.
+   */
+  protected function findUserIdInHtml($body, $user) {
+    $reg = '/a.+?class=\\\\".*?js-action-profile.*?\\\\".+?href=\\\\"\\\\\/' . $user . '\\\\".+?data-user-id=\\\\"([0-9]+)\\\\"/';
+    $matched = preg_match($reg, $body, $matches);
+    if ($matched) {
+      return $matches[1];
+    }
+    return NULL;
   }
 
   /**

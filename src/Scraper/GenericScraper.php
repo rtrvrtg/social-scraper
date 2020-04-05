@@ -68,6 +68,7 @@ class GenericScraper {
       return $result->getBody()->getContents();
     }
     catch (TransferException $e) {
+      print $method . ' ' . $url . ': ' . $e->getResponse()->getStatusCode() . ': ' . $e->getMessage() . PHP_EOL;
       $this->errors[] = $e->getResponse()->getStatusCode() . ': ' . $e->getMessage();
       return FALSE;
     }

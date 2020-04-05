@@ -16,8 +16,18 @@ final class TwitterTest extends TestCase {
   public function testGetSinglePost() {
     $i = new Twitter();
     $result = $i->getPost('dril', '922321981');
+    $this->assertEquals('Conversation-922321981', $result['timeline']['id']);
+    $this->assertEquals([], $i->getErrors());
+  }
+
+  /**
+   * Test getting a user's posts.
+   */
+  public function testGetUserPosts() {
+    $i = new Twitter();
+    $result = $i->userList('dril');
     var_dump($result);
-    // $this->assertEquals('2263790439947844808', $result['id']);
+    // $this->assertEquals('Conversation-922321981', $result['timeline']['id']);
     $this->assertEquals([], $i->getErrors());
   }
 
