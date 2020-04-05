@@ -1,0 +1,26 @@
+{
+    "name": "rtrvrtg/social-scraper",
+    "description": "Scrapes social media feeds from various providers.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Geoffrey Roberts",
+            "email": "g.roberts@blackicemedia.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Rtrvrtg\\SocialScraper\\": "src"
+        }
+    },
+    "require": {
+        "guzzlehttp/guzzle": "^6.5"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^8.5"
+    },
+    "scripts": {
+    	"test": "./vendor/bin/phpunit --bootstrap vendor/autoload.php --coverage-html ./coverage --whitelist src/ tests/"
+    }
+}
