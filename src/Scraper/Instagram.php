@@ -46,6 +46,7 @@ class Instagram extends GenericScraper {
       !empty($parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges'])
     ) {
       return array_map(function ($e) {
+        list($images, $videos) = $this->postMedia($e['node']);
         $post = new Post([
           'service' => 'instagram',
           'postId' => $e['node']['id'],
@@ -55,8 +56,8 @@ class Instagram extends GenericScraper {
           'created' => $e['node']['taken_at_timestamp'],
           'text' => $e['node']['edge_media_to_caption']['edges'][0]['node']['text'] ?? '',
           'accessibilityCaption' => $e['node']['accessibility_caption'],
-          'images' => [],
-          'videos' => [],
+          'images' => $images,
+          'videos' => $videos,
           'intents' => [],
           'raw' => $e['node'],
         ]);
@@ -79,6 +80,7 @@ class Instagram extends GenericScraper {
       !empty($parsed['entry_data']['PostPage'][0]['media'])
     ) {
       $base = $parsed['entry_data']['PostPage'][0]['media'];
+      list($images, $videos) = $this->postMedia($base);
       return new Post([
         'service' => 'instagram',
         'postId' => $base['id'],
@@ -87,9 +89,9 @@ class Instagram extends GenericScraper {
         'userUrl' => 'https://instagram.com/' . $base['owner']['username'] . '/',
         'created' => $base['taken_at_timestamp'],
         'text' => $base['edge_media_to_caption']['edges'][0]['node']['text'] ?? '',
-        'accessibilityCaption' => $base['accessibility_caption'],
-        'images' => $this->postImages($base),
-        'videos' => [],
+        'accessibilityCaption' => $base['accessibility_caption'] ?? '',
+        'images' => $images,
+        'videos' => $videos,
         'intents' => [],
         'raw' => $base,
       ]);
@@ -99,6 +101,7 @@ class Instagram extends GenericScraper {
       !empty($parsed['entry_data']['PostPage'][0]['graphql']['shortcode_media'])
     ) {
       $base = $parsed['entry_data']['PostPage'][0]['graphql']['shortcode_media'];
+      list($images, $videos) = $this->postMedia($base);
       return new Post([
         'service' => 'instagram',
         'postId' => $base['id'],
@@ -107,9 +110,9 @@ class Instagram extends GenericScraper {
         'userUrl' => 'https://instagram.com/' . $base['owner']['username'] . '/',
         'created' => $base['taken_at_timestamp'],
         'text' => $base['edge_media_to_caption']['edges'][0]['node']['text'] ?? '',
-        'accessibilityCaption' => $base['accessibility_caption'],
-        'images' => $this->postImages($base),
-        'videos' => [],
+        'accessibilityCaption' => $base['accessibility_caption'] ?? '',
+        'images' => $images,
+        'videos' => $videos,
         'intents' => [],
         'raw' => $base,
       ]);
@@ -133,9 +136,21 @@ class Instagram extends GenericScraper {
   /**
    * Get list of all images on a post.
    */
-  protected function postImages($post) {
+  protected function postMedia($post) {
     $images = [];
-    if (!empty($post['images']['standard_resolution'])) {
+    $videos = [];
+    if (!empty($post['edge_sidecar_to_children']['edges'])) {
+      foreach ($post['edge_sidecar_to_children']['edges'] as $edge) {
+        $node = $edge['node'];
+        if ($node['__typename'] === 'GraphVideo') {
+          $videos[] = $node['video_url'];
+        }
+        elseif ($node['__typename'] === 'GraphImage') {
+          $images[] = $node['display_url']; 
+        }
+      }
+    }
+    elseif (!empty($post['images']['standard_resolution'])) {
       $images = [$post['images']['standard_resolution']['url']];
     }
     elseif (!empty($post['display_src'])) {
@@ -144,7 +159,7 @@ class Instagram extends GenericScraper {
     elseif (!empty($post['display_url'])) {
       $images = [$post['display_url']];
     }
-    return $images;
+    return [$images, $videos];
   }
 
 }

@@ -16,6 +16,7 @@ final class InstagramTest extends TestCase {
   public function testGetSinglePost() {
     $i = new Instagram();
     $result = $i->getPost('B9qmWk7BDzI');
+    $this->assertNotEmpty($result->images);
     $this->assertEquals('2263790439947844808', $result->postId);
     $this->assertEquals([], $i->getErrors());
   }
@@ -27,6 +28,7 @@ final class InstagramTest extends TestCase {
     $i = new Instagram();
     $result = $i->userList('retrovertigo');
     $this->assertNotEmpty($result);
+    $this->assertNotEmpty($result[0]->images);
     $this->assertEquals('retrovertigo', $result[0]->userName);
     $this->assertEquals([], $i->getErrors());
   }
