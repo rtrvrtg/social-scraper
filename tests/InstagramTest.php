@@ -20,4 +20,15 @@ final class InstagramTest extends TestCase {
     $this->assertEquals([], $i->getErrors());
   }
 
+  /**
+   * Test getting a user list.
+   */
+  public function testGetUserList() {
+    $i = new Instagram();
+    $result = $i->userList('retrovertigo');
+    $this->assertNotEmpty($result);
+    $this->assertEquals('retrovertigo', $result[0]['owner']['username']);
+    $this->assertEquals([], $i->getErrors());
+  }
+
 }

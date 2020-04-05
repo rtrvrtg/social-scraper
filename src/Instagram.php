@@ -22,12 +22,35 @@ class Instagram extends GenericScraper {
   /**
    * Fetches a list of user posts.
    */
-  public function userList() {}
+  public function userList($user_name) {
+    $method = 'GET';
+    $url = 'https://instagram.com/' . $user_name . '/';
+    $body = $this->doHttp($method, $url);
+    return $this->decodeUserListHtml($body);
+  }
 
   /**
    * Fetches a list of posts for a hashtag.
    */
   public function hashtagList() {}
+
+  /**
+   * Decodes a getPost request.
+   */
+  protected function decodeUserListHtml($body) {
+    $parsed = $this->findSharedData($body);
+
+    if (
+      !empty($parsed) &&
+      !empty($parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges'])
+    ) {
+      return array_map(function ($e) {
+        return $e['node'];
+      }, $parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges']);
+    }
+
+    return NULL;
+  }
 
   /**
    * Decodes a getPost request.
