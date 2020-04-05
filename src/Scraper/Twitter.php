@@ -1,6 +1,6 @@
 <?php
 
-namespace Rtrvrtg\SocialScraper;
+namespace Rtrvrtg\SocialScraper\Scraper;
 
 use Rtrvrtg\SocialScraper\Scraper\GenericScraper;
 

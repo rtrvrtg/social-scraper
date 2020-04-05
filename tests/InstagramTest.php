@@ -3,7 +3,7 @@
 declare(strict_types = 1);
 
 use PHPUnit\Framework\TestCase;
-use Rtrvrtg\SocialScraper\Instagram;
+use Rtrvrtg\SocialScraper\Scraper\Instagram;
 
 /**
  * Tests Instagram scraping.

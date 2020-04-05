@@ -3,7 +3,7 @@
 declare(strict_types = 1);
 
 use PHPUnit\Framework\TestCase;
-use Rtrvrtg\SocialScraper\Twitter;
+use Rtrvrtg\SocialScraper\Scraper\Twitter;
 
 /**
  * Tests Twitter scraping.
@@ -26,8 +26,7 @@ final class TwitterTest extends TestCase {
   public function testGetUserPosts() {
     $i = new Twitter();
     $result = $i->userList('dril');
-    var_dump($result);
-    // $this->assertEquals('Conversation-922321981', $result['timeline']['id']);
+    $this->assertNotEmpty($result);
     $this->assertEquals([], $i->getErrors());
   }
 
