@@ -25,3 +25,5 @@ elseif (strtolower($service) === 'twitter') {
 }
 
 var_dump($post);
+// print PHP_EOL . PHP_EOL;
+// print $post->raw . PHP_EOL;

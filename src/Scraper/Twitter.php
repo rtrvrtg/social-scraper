@@ -218,6 +218,32 @@ class Twitter extends GenericScraper {
       $internal_tweet[0]
     );
 
+    $videos = [];
+    $this->forEachClassName(
+      function ($node) use (&$videos) {
+        $chunks = explode(';', $node->getAttribute('style'));
+        foreach ($chunks as $chunk) {
+          $chunk = trim($chunk);
+          if (strpos($chunk, 'background') !== 0) {
+            continue;
+          }
+          list(, $bg_image) = explode(':', $chunk, 2);
+          $bg_image = str_replace(["url('", "')"], '', trim($bg_image));
+          $bg_image_chunks = explode('/', $bg_image);
+          $bg_image_last = array_pop($bg_image_chunks);
+          $video_id = str_replace('.jpg', '', $bg_image_last);
+          $videos[] = [
+            'id' => $video_id,
+            'poster' => $bg_image,
+          ];
+        }
+      },
+      $xpath,
+      './/*',
+      'PlayableMedia-player',
+      $stream_item
+    );
+
     return new Post([
       'service' => 'twitter',
       'postId' => $post_id,
@@ -230,7 +256,7 @@ class Twitter extends GenericScraper {
       'text' => $text_content,
       'accessibilityCaption' => '',
       'images' => $images,
-      'videos' => [],
+      'videos' => $videos,
       'intents' => [],
       'raw' => $this->nodeXml($stream_item),
     ]);
@@ -247,13 +273,13 @@ class Twitter extends GenericScraper {
    * Class XPath selectors.
    */
   protected function xpathClass(string $class_name) {
+    // ends-with is not supported in XPath 1.0.
     return '[' . implode(' or ', [
       '@class="' . $class_name . '"',
       'starts-with(@class, "' . $class_name . ' ")',
-      // ends-with is not supported in XPath 1.0.
-      // 'ends-with(@class, " ' . $class_name . ' ")'.
       'contains(@class, " ' . $class_name . ' ")',
       'contains(@class, " ' . $class_name . '")',
+      'contains(@class, "' . $class_name . '")',
     ]) . ']';
   }
 
@@ -267,13 +293,12 @@ class Twitter extends GenericScraper {
     string $class_name,
     \DOMElement $context_node = NULL
   ) {
-    $nodes = $xpath->query(
-      $query_prefix . $this->xpathClass($class_name),
-      $context_node
-    );
+    $query = $query_prefix . $this->xpathClass($class_name);
+    $nodes = $xpath->query($query, $context_node);
     $count = 0;
     foreach ($nodes as $node) {
-      $class_names = array_filter(explode(' ', $node->getAttribute('class') ?? ''));
+      $class_attr = trim(preg_replace('/[\r\n\s\t]+/', ' ', $node->getAttribute('class') ?? ''));
+      $class_names = array_filter(explode(' ', $class_attr));
       if (in_array($class_name, $class_names)) {
         $for_each_func($node);
         $count++;
