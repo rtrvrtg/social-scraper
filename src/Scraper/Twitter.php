@@ -207,6 +207,17 @@ class Twitter extends GenericScraper {
     $post_user_name = $internal_tweet[0]->getAttribute('data-screen-name');
     $post_user_display_name = $internal_tweet[0]->getAttribute('data-name');
 
+    $images = [];
+    $this->forEachClassName(
+      function ($node) use (&$images) {
+        $images[] = $node->getAttribute('data-image-url');
+      },
+      $xpath,
+      './/div',
+      'AdaptiveMedia-photoContainer',
+      $internal_tweet[0]
+    );
+
     return new Post([
       'service' => 'twitter',
       'postId' => $post_id,
@@ -218,7 +229,7 @@ class Twitter extends GenericScraper {
       'created' => $timestamp,
       'text' => $text_content,
       'accessibilityCaption' => '',
-      'images' => [],
+      'images' => $images,
       'videos' => [],
       'intents' => [],
       'raw' => $this->nodeXml($stream_item),
