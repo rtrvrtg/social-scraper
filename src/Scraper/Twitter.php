@@ -244,6 +244,44 @@ class Twitter extends GenericScraper {
       $stream_item
     );
 
+    $stats = [];
+    $stat_name = '';
+    $insert_stat = function ($node) use (&$stat_name, &$stats, &$xpath) {
+      $this->forEachClassName(
+        function ($count_node) use (&$stat_name, &$stats) {
+          $stats[$stat_name] = intval($count_node->textContent);
+        },
+        $xpath,
+        './/span',
+        'ProfileTweet-actionCountForPresentation',
+        $node
+      );
+    };
+    $stat_name = 'reply';
+    $this->forEachClassName(
+      $insert_stat,
+      $xpath,
+      './/div',
+      'ProfileTweet-action--reply',
+      $internal_tweet[0]
+    );
+    $stat_name = 'retweet';
+    $this->forEachClassName(
+      $insert_stat,
+      $xpath,
+      './/div',
+      'ProfileTweet-action--retweet',
+      $internal_tweet[0]
+    );
+    $stat_name = 'like';
+    $this->forEachClassName(
+      $insert_stat,
+      $xpath,
+      './/div',
+      'ProfileTweet-action--favorite',
+      $internal_tweet[0]
+    );
+
     return new Post([
       'service' => 'twitter',
       'postId' => $post_id,
@@ -257,7 +295,7 @@ class Twitter extends GenericScraper {
       'accessibilityCaption' => '',
       'images' => $images,
       'videos' => $videos,
-      'intents' => [],
+      'stats' => $stats,
       'raw' => $this->nodeXml($stream_item),
     ]);
   }

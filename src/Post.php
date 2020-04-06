@@ -92,6 +92,13 @@ class Post {
   protected $videos;
 
   /**
+   * Stats for this post.
+   *
+   * @var string
+   */
+  protected $stats;
+
+  /**
    * Intents for this post.
    *
    * @var string
