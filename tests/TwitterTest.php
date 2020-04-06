@@ -17,6 +17,7 @@ final class TwitterTest extends TestCase {
     $i = new Twitter();
     $result = $i->getPost('dril', '922321981');
     $this->assertEquals('922321981', $result->postId);
+    $this->assertEquals('no', $result->text);
     $this->assertEquals([], $i->getErrors());
   }
 
@@ -26,7 +27,6 @@ final class TwitterTest extends TestCase {
   public function testGetUserPosts() {
     $i = new Twitter();
     $result = $i->userList('dril');
-    var_dump($result);
     $this->assertNotEmpty($result);
     $this->assertEquals([], $i->getErrors());
   }
