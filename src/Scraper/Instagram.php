@@ -97,7 +97,7 @@ class Instagram extends GenericScraper {
     $user_id = $node['owner']['id'];
 
     list($cache_bucket, $cache_key) = $this->cacheBucketKey('getPostUserInfo', $user_id);
-    return $this->useCache($cache_bucket, $cache_key, function () use ($user_id) {
+    return $this->useCache($cache_bucket, $cache_key, function () use ($user_id, $node) {
       if (empty($this->userIdCache[$user_id])) {
         $post = $this->getPost($node['shortcode']);
         $user_info = [
