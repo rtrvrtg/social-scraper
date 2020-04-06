@@ -27,9 +27,9 @@ final class InstagramTest extends TestCase {
   public function testGetUserList() {
     $i = new Instagram();
     $result = $i->userList('retrovertigo');
-    $this->assertNotEmpty($result);
-    $this->assertNotEmpty($result[0]->images);
-    $this->assertEquals('retrovertigo', $result[0]->userName);
+    $this->assertNotEmpty($result->posts);
+    $this->assertNotEmpty($result->posts[0]->images);
+    $this->assertEquals('retrovertigo', $result->posts[0]->userName);
     $this->assertEquals([], $i->getErrors());
   }
 

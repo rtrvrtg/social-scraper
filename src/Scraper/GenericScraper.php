@@ -29,7 +29,14 @@ class GenericScraper {
    *
    * @var array
    */
-  protected $cachingBackend;
+  protected $cachingBackend = NULL;
+
+  /**
+   * Debug.
+   *
+   * @var array
+   */
+  public $debug = FALSE;
 
   /**
    * Constructor.
@@ -39,6 +46,15 @@ class GenericScraper {
       'cookies' => TRUE,
     ]);
     $this->errors = [];
+  }
+
+  /**
+   * Generate a cache bucket and key name.
+   */
+  protected function cacheBucketKey($function_name, $cache_key_base) {
+    $path = explode('\\', get_called_class());
+    $class_name = array_pop($path);
+    return [$class_name . '::' . $function_name, hash('sha256', $cache_key_base)];
   }
 
   /**
@@ -69,23 +85,48 @@ class GenericScraper {
   }
 
   /**
+   * Use caching backend to get data.
+   */
+  protected function useCache(string $cache_bucket, string $cache_key, callable $callback) {
+    if (
+      !empty($this->cachingBackend) &&
+      $this->cachingBackend->hasData($cache_bucket, $cache_key)
+    ) {
+      return @unserialize($this->cachingBackend->getData($cache_bucket, $cache_key));
+    }
+    $result = $callback();
+    if (!empty($this->cachingBackend)) {
+      $ser_result = @serialize($result);
+      $this->cachingBackend->setData($cache_bucket, $cache_key, $ser_result);
+    }
+    return $result;
+  }
+
+  /**
    * Do HTTP request.
    */
   protected function doHttp($method, $url) {
-    $headers = $this->doHttpHeaders();
-    try {
-      $result = $this->client->request(
-        strtoupper($method),
-        $url,
-        ['headers' => $headers]
-      );
-      return $result->getBody()->getContents();
-    }
-    catch (TransferException $e) {
-      print $method . ' ' . $url . ': ' . $e->getResponse()->getStatusCode() . ': ' . $e->getMessage() . PHP_EOL;
-      $this->errors[] = $e->getResponse()->getStatusCode() . ': ' . $e->getMessage();
-      return FALSE;
-    }
+    list($cache_bucket, $cache_key) = $this->cacheBucketKey('doHTTP', $method . ' ' . $url);
+    return $this->useCache($cache_bucket, $cache_key, function () use ($method, $url) {
+      $headers = $this->doHttpHeaders();
+      try {
+        $result = $this->client->request(
+          strtoupper($method),
+          $url,
+          ['headers' => $headers]
+        );
+        return $result->getBody()->getContents();
+      }
+      catch (TransferException $e) {
+        if ($this->debug) {
+          print $method . ' ' . $url . ': ' .
+            $e->getResponse()->getStatusCode() . ': ' .
+            $e->getMessage() . PHP_EOL;
+        }
+        $this->errors[] = $e->getResponse()->getStatusCode() . ': ' . $e->getMessage();
+        return FALSE;
+      }
+    });
   }
 
 }

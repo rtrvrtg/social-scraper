@@ -5,7 +5,7 @@ namespace Rtrvrtg\SocialScraper;
 /**
  * A social media post.
  */
-class Post {
+class Post implements \Serializable {
 
   /**
    * Name of the service used.
@@ -144,6 +144,39 @@ class Post {
    */
   public function __isset($prop) {
     return property_exists($this, $prop) && !empty($this->{$prop});
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function serialize() {
+    return @serialize([
+      'service' => $this->service,
+      'postId' => $this->postId,
+      'postUrl' => $this->postUrl,
+      'userName' => $this->userName,
+      'userDisplayName' => $this->userDisplayName,
+      'userUrl' => $this->userUrl,
+      'userAvatarUrl' => $this->userAvatarUrl,
+      'created' => $this->created,
+      'text' => $this->text,
+      'accessibilityCaption' => $this->accessibilityCaption,
+      'images' => $this->images,
+      'videos' => $this->videos,
+      'stats' => $this->stats,
+      'intents' => $this->intents,
+      'raw' => $this->raw,
+    ]);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function unserialize($serialized) {
+    $props = @unserialize($serialized);
+    foreach ($props as $prop => $value) {
+      $this->__set($prop, $value);
+    }
   }
 
 }

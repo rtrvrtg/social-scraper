@@ -8,6 +8,13 @@ namespace Rtrvrtg\SocialScraper;
 class PostList {
 
   /**
+   * Name of the service used.
+   *
+   * @var string
+   */
+  protected $service;
+
+  /**
    * List of all the posts.
    *
    * @var array
@@ -60,6 +67,28 @@ class PostList {
    */
   public function __isset($prop) {
     return property_exists($this, $prop) && !empty($this->{$prop});
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function serialize() {
+    return json_encode([
+      'service' => $this->service,
+      'posts' => $this->posts,
+      'prevCursor' => $this->prevCursor,
+      'nextCursor' => $this->nextCursor,
+    ]);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function unserialize($serialized) {
+    $props = json_decode($serialized, TRUE);
+    foreach ($props as $prop => $value) {
+      $this->__set($prop, $value);
+    }
   }
 
 }

@@ -4,6 +4,7 @@ namespace Rtrvrtg\SocialScraper\Scraper;
 
 use Rtrvrtg\SocialScraper\Scraper\GenericScraper;
 use Rtrvrtg\SocialScraper\Post;
+use Rtrvrtg\SocialScraper\PostList;
 
 /**
  * Fetches posts from Instagram.
@@ -57,11 +58,9 @@ class Instagram extends GenericScraper {
       !empty($parsed) &&
       !empty($parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges'])
     ) {
-      return array_map(function ($e) {
+      $posts = array_map(function ($e) {
         $node = $e['node'];
         list($images, $videos) = $this->postMedia($node);
-        var_dump($node);
-        die();
         $post = new Post([
           'service' => 'instagram',
           'postId' => $node['id'],
@@ -81,6 +80,11 @@ class Instagram extends GenericScraper {
 
         return $post;
       }, $parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges']);
+
+      return new PostList([
+        'service' => 'instagram',
+        'posts' => $posts,
+      ]);
     }
 
     return NULL;
@@ -91,17 +95,21 @@ class Instagram extends GenericScraper {
    */
   protected function getPostUserInfo($node) {
     $user_id = $node['owner']['id'];
-    if (!empty($this->userIdCache[$user_id])) {
+
+    list($cache_bucket, $cache_key) = $this->cacheBucketKey('getPostUserInfo', $user_id);
+    return $this->useCache($cache_bucket, $cache_key, function () use ($user_id) {
+      if (empty($this->userIdCache[$user_id])) {
+        $post = $this->getPost($node['shortcode']);
+        $user_info = [
+          'userName' => $post->userName,
+          'userDisplayName' => $post->userDisplayName,
+          'userUrl' => $post->userUrl,
+          'userAvatarUrl' => $post->userAvatarUrl,
+        ];
+        $this->userIdCache[$user_id] = $user_info;
+      }
       return $this->userIdCache[$user_id];
-    }
-    $post = $this->getPost($node['shortcode']);
-    $this->userIdCache[$user_id] = [
-      'userName' => $post->userName,
-      'userDisplayName' => $post->userDisplayName,
-      'userUrl' => $post->userUrl,
-      'userAvatarUrl' => $post->userAvatarUrl,
-    ];
-    return $this->userIdCache[$user_id];
+    });
   }
 
   /**
@@ -114,7 +122,7 @@ class Instagram extends GenericScraper {
       !empty($parsed) &&
       !empty($parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media']['edges'])
     ) {
-      return array_map(function ($e) {
+      $posts = array_map(function ($e) {
         $node = $e['node'];
         list($images, $videos) = $this->postMedia($node);
         $user_info = $this->getPostUserInfo($node);
@@ -137,6 +145,11 @@ class Instagram extends GenericScraper {
 
         return $post;
       }, $parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media']['edges']);
+
+      return new PostList([
+        'service' => 'instagram',
+        'posts' => $posts,
+      ]);
     }
 
     return NULL;
