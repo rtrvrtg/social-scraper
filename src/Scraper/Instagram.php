@@ -13,7 +13,7 @@ class Instagram extends GenericScraper {
   /**
    * Fetches a single post.
    */
-  public function getPost($post_shortcode) {
+  public function getPost(string $post_shortcode) {
     $method = 'GET';
     $url = 'https://instagram.com/p/' . $post_shortcode . '/';
     $body = $this->doHttp($method, $url);
@@ -23,7 +23,7 @@ class Instagram extends GenericScraper {
   /**
    * Fetches a list of user posts.
    */
-  public function userList($user_name) {
+  public function userList(string $user_name, $cursor = NULL) {
     $method = 'GET';
     $url = 'https://instagram.com/' . $user_name . '/';
     $body = $this->doHttp($method, $url);
@@ -33,7 +33,12 @@ class Instagram extends GenericScraper {
   /**
    * Fetches a list of posts for a hashtag.
    */
-  public function hashtagList() {}
+  public function hashtagList(string $hashtag, $cursor = NULL) {
+    $method = 'GET';
+    $url = 'https://www.instagram.com/explore/tags/' . urlencode($hashtag) . '/';
+    $body = $this->doHttp($method, $url);
+    return $this->decodeTagListHtml($body);
+  }
 
   /**
    * Decodes a getPost request.
@@ -66,6 +71,42 @@ class Instagram extends GenericScraper {
 
         return $post;
       }, $parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges']);
+    }
+
+    return NULL;
+  }
+
+  /**
+   * Decodes a hashtagList request.
+   */
+  protected function decodeTagListHtml($body) {
+    $parsed = $this->findSharedData($body);
+
+    if (
+      !empty($parsed) &&
+      !empty($parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media']['edges'])
+    ) {
+      return array_map(function ($e) {
+        list($images, $videos) = $this->postMedia($e['node']);
+        $post = new Post([
+          'service' => 'instagram',
+          'postId' => $e['node']['id'],
+          'postUrl' => 'https://instagram.com/p/' . $e['node']['shortcode'] . '/',
+          'userName' => $e['node']['owner']['username'],
+          'userDisplayName' => '',
+          'userUrl' => 'https://instagram.com/' . $e['node']['owner']['username'] . '/',
+          'userAvatarUrl' => '',
+          'created' => $e['node']['taken_at_timestamp'],
+          'text' => $e['node']['edge_media_to_caption']['edges'][0]['node']['text'] ?? '',
+          'accessibilityCaption' => $e['node']['accessibility_caption'],
+          'images' => $images,
+          'videos' => $videos,
+          'intents' => [],
+          'raw' => $e['node'],
+        ]);
+
+        return $post;
+      }, $parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media']['edges']);
     }
 
     return NULL;

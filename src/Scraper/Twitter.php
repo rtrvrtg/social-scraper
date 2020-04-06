@@ -68,7 +68,7 @@ class Twitter extends GenericScraper {
   /**
    * Fetches a single post.
    */
-  public function getPost($user, $post_id) {
+  public function getPost(string $user, string $post_id) {
     $this->referrer = 'https://twitter.com/' . $user . '/status/' . $post_id;
     $this->doBootstrapQuery('status', $user, $post_id);
     $result = $this->doHttp('GET', 'https://twitter.com/' . $user . '/status/' . $post_id);
@@ -94,7 +94,7 @@ class Twitter extends GenericScraper {
   /**
    * Fetches a list of user posts.
    */
-  public function userList($user_name) {
+  public function userList(string $user_name, $cursor = NULL) {
     $this->referrer = 'https://twitter.com/' . $user_name;
     $this->doBootstrapQuery('profile', $user_name);
     $user_id = '';
@@ -104,32 +104,58 @@ class Twitter extends GenericScraper {
 
     if (!empty($result)) {
       $raw = json_decode($result, TRUE);
-      $posts = [];
-
-      // Necessary to get XPath to work.
-      // @see https://github.com/Masterminds/html5-php/issues/123
-      $html5 = new HTML5([
-        'disable_html_ns' => TRUE,
-      ]);
-      $dom = $html5->loadHTML($raw['items_html'] ?? '');
-      $xpath = new \DOMXPath($dom);
-
-      $this->forEachClassName(
-        function ($stream_item) use (&$posts, &$xpath) {
-          $posts[] = $this->parseStreamItem($xpath, $stream_item);
-        },
-        $xpath,
-        '//*',
-        'stream-item'
-      );
-
-      return new PostList([
-        'posts' => $posts,
-        'prevCursor' => $raw['min_position'],
-        'nextCursor' => $raw['max_position'],
-      ]);
+      return $this->parsePostFeed($raw);
     }
     return FALSE;
+  }
+
+  /**
+   * Fetches a list of posts for a hashtag.
+   */
+  public function hashtagList(string $query, $cursor = NULL) {
+    $this->referrer = 'https://search.twitter.com/';
+
+    $this->doBootstrapQuery('hashtag', NULL, $query);
+    $user_id = '';
+    $cursor = '';
+    $result = $this->doHttp('GET', 'https://twitter.com/i/search/timeline?f=tweets&vertical=default&q=' . urlencode($query) . '&src=tyah&reset_error_state=false');
+
+    if (!empty($result)) {
+      $raw = json_decode($result, TRUE);
+      return $this->parsePostFeed($raw);
+    }
+
+    return FALSE;
+  }
+
+  /**
+   * Parse post feeds.
+   */
+  protected function parsePostFeed(array $raw = []) {
+    $posts = [];
+
+    // Necessary to get XPath to work.
+    // @see https://github.com/Masterminds/html5-php/issues/123
+    $html5 = new HTML5([
+      'disable_html_ns' => TRUE,
+    ]);
+    $dom = $html5->loadHTML($raw['items_html'] ?? '');
+    $xpath = new \DOMXPath($dom);
+
+    $this->forEachClassName(
+      function ($stream_item) use (&$posts, &$xpath) {
+        $posts[] = $this->parseStreamItem($xpath, $stream_item);
+      },
+      $xpath,
+      '//*',
+      'stream-item'
+    );
+
+    return new PostList([
+      'posts' => $posts,
+      'prevCursor' => $raw['min_position'],
+      'nextCursor' => $raw['max_position'],
+    ]);
   }
 
   /**
@@ -345,13 +371,6 @@ class Twitter extends GenericScraper {
   }
 
   /**
-   * Fetches a list of posts for a hashtag.
-   */
-  public function hashtagList() {
-    $this->referrer = 'https://search.twitter.com/';
-  }
-
-  /**
    * Do a bootstrap query to get a session.
    *
    * 1. Get page.
@@ -376,7 +395,7 @@ class Twitter extends GenericScraper {
       }
     }
     else {
-      $markup = $this->doHttp('GET', 'https://twitter.com/i/search/timeline?f=tweets&vertical=default&q=' . $query . '&src=tyah&reset_error_state=false');
+      $markup = $this->doHttp('GET', 'https://twitter.com/i/search/timeline?f=tweets&vertical=default&q=' . urlencode($query) . '&src=tyah&reset_error_state=false');
     }
 
     $main_js_url = $this->findMainJsUrl($markup);
@@ -393,7 +412,7 @@ class Twitter extends GenericScraper {
   }
 
   /**
-   * Find the user ID
+   * Find the user ID.
    */
   protected function findUserIdInHtml($body, $user) {
     $reg = '/<div.*?class="ProfileNav".+?data-user-id="([0-9]+)".*?>/';
