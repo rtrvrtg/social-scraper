@@ -25,6 +25,13 @@ class GenericScraper {
   protected $errors;
 
   /**
+   * Caching backend.
+   *
+   * @var array
+   */
+  protected $cachingBackend;
+
+  /**
    * Constructor.
    */
   public function __construct() {
@@ -32,6 +39,13 @@ class GenericScraper {
       'cookies' => TRUE,
     ]);
     $this->errors = [];
+  }
+
+  /**
+   * Set caching backend for scraper.
+   */
+  public function setCachingBackend($caching_backend) {
+    $this->cachingBackend = $caching_backend;
   }
 
   /**
