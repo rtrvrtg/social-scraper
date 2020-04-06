@@ -104,7 +104,6 @@ class Twitter extends GenericScraper {
 
     if (!empty($result)) {
       $raw = json_decode($result, TRUE);
-
       $posts = [];
 
       // Necessary to get XPath to work.
@@ -114,14 +113,15 @@ class Twitter extends GenericScraper {
       ]);
       $dom = $html5->loadHTML($raw['items_html'] ?? '');
       $xpath = new \DOMXPath($dom);
-      $stream_items = $xpath->query(
-        '//*' . $this->xpathClass('stream-item')
-      );
-      if ($stream_items->count() > 0) {
-        foreach ($stream_items as $stream_item) {
+
+      $this->forEachClassName(
+        function ($stream_item) use (&$posts, &$xpath) {
           $posts[] = $this->parseStreamItem($xpath, $stream_item);
-        }
-      }
+        },
+        $xpath,
+        '//*',
+        'stream-item'
+      );
 
       return new PostList([
         'posts' => $posts,
@@ -369,7 +369,7 @@ class Twitter extends GenericScraper {
       $markup = $this->doHttp('GET', 'https://twitter.com/' . $user . '/status/' . $query . '?lang=en');
     }
     elseif ($type === 'profile') {
-      $markup = $this->doHttp('GET', 'https://twitter.com/i/profiles/show/' . $user . '/timeline/tweets');
+      $markup = $this->doHttp('GET', 'https://twitter.com/' . $user);
       $user_id = $this->findUserIdInHtml($markup, $user);
       if (!empty($user_id)) {
         $this->userIdCache[$user] = $user_id;
@@ -393,10 +393,10 @@ class Twitter extends GenericScraper {
   }
 
   /**
-   * Find the main JS URL.
+   * Find the user ID
    */
   protected function findUserIdInHtml($body, $user) {
-    $reg = '/a.+?class=\\\\".*?js-action-profile.*?\\\\".+?href=\\\\"\\\\\/' . $user . '\\\\".+?data-user-id=\\\\"([0-9]+)\\\\"/';
+    $reg = '/<div.*?class="ProfileNav".+?data-user-id="([0-9]+)".*?>/';
     $matched = preg_match($reg, $body, $matches);
     if ($matched) {
       return $matches[1];
