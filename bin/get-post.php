@@ -1,4 +1,3 @@
-#!/usr/bin/env php
 <?php
 
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -7,22 +6,23 @@ use Rtrvrtg\SocialScraper\Scraper\Instagram;
 use Rtrvrtg\SocialScraper\Scraper\Twitter;
 
 $service = $argv[1];
-$query = $argv[2];
+$user = $argv[2];
+$post_id = $argv[3];
 
-if (empty($service) || empty($query)) {
+if (empty($service) || empty($user) || empty($post_id)) {
   exit(1);
 }
 
-$posts = NULL;
+$post = NULL;
 if (strtolower($service) === 'instagram') {
   $service = new Instagram();
-  $posts = $service->hashtagList($query);
+  $post = $service->getPost($post_id);
 }
 elseif (strtolower($service) === 'twitter') {
   $service = new Twitter();
-  $posts = $service->hashtagList(trim($query, '#'));
+  $post = $service->getPost($user, $post_id);
 }
 
-var_dump($posts);
+var_dump($post);
 // print PHP_EOL . PHP_EOL;
 // print $post->raw . PHP_EOL;

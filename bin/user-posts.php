@@ -1,4 +1,3 @@
-#!/usr/bin/env php
 <?php
 
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -8,22 +7,21 @@ use Rtrvrtg\SocialScraper\Scraper\Twitter;
 
 $service = $argv[1];
 $user = $argv[2];
-$post_id = $argv[3];
 
-if (empty($service) || empty($user) || empty($post_id)) {
+if (empty($service) || empty($user)) {
   exit(1);
 }
 
-$post = NULL;
+$posts = NULL;
 if (strtolower($service) === 'instagram') {
   $service = new Instagram();
-  $post = $service->getPost($post_id);
+  $posts = $service->userList($user);
 }
 elseif (strtolower($service) === 'twitter') {
   $service = new Twitter();
-  $post = $service->getPost($user, $post_id);
+  $posts = $service->userList($user);
 }
 
-var_dump($post);
+var_dump($posts);
 // print PHP_EOL . PHP_EOL;
 // print $post->raw . PHP_EOL;
