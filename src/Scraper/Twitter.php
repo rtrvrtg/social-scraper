@@ -154,8 +154,8 @@ class Twitter extends GenericScraper {
     return new PostList([
       'service' => 'twitter',
       'posts' => $posts,
-      'prevCursor' => $raw['min_position'],
-      'nextCursor' => $raw['max_position'],
+      'prevCursor' => $raw['min_position'] ?? '',
+      'nextCursor' => $raw['max_position'] ?? '',
     ]);
   }
 
