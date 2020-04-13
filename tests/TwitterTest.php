@@ -15,10 +15,11 @@ final class TwitterTest extends TestCase {
    */
   public function testGetSinglePost() {
     $i = new Twitter();
+    $i->debug = FALSE;
     $result = $i->getPost('dril', '922321981');
+    $this->assertEquals([], $i->getErrors());
     $this->assertEquals('922321981', $result->postId);
     $this->assertEquals('no', $result->text);
-    $this->assertEquals([], $i->getErrors());
   }
 
   /**
@@ -26,9 +27,10 @@ final class TwitterTest extends TestCase {
    */
   public function testGetUserPosts() {
     $i = new Twitter();
+    $i->debug = FALSE;
     $result = $i->userList('dril');
-    $this->assertNotEmpty($result);
     $this->assertEquals([], $i->getErrors());
+    $this->assertNotEmpty($result);
   }
 
 }

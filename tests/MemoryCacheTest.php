@@ -16,7 +16,7 @@ final class MemoryCacheTest extends TestCase {
    */
   public function testCache() {
     $i = new Twitter();
-    $i->debug = TRUE;
+    $i->debug = FALSE;
     static $be;
     $be = new MemoryCache();
     $i->setCachingBackend($be);

@@ -19,6 +19,43 @@ class Instagram extends GenericScraper {
   protected $userIdCache = [];
 
   /**
+   * Variables from Instagram Commons JS file.
+   *
+   * @var array
+   */
+  protected $commonsVars = [];
+
+  /**
+   * Referrer string for each request.
+   *
+   * @var string
+   */
+  protected $referrer;
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function doHttpHeaders() {
+    $headers = parent::doHttpHeaders();
+    if (!empty($this->commonsVars['instagramWebDesktopFBAppId'])) {
+      $headers['X-IG-App-ID'] = $this->commonsVars['instagramWebDesktopFBAppId'];
+    }
+    if (!empty($this->commonsVars['csrfToken'])) {
+      $headers['X-CSRFToken'] = $this->commonsVars['csrfToken'];
+    }
+    if (!empty($this->commonsVars['rolloutHash'])) {
+      $headers['X-Instagram-AJAX'] = $this->commonsVars['rolloutHash'];
+    }
+    if (!empty($this->commonsVars['igWWWClaim'])) {
+      $headers['X-IG-WWW-Claim'] = $this->commonsVars['igWWWClaim'];
+    }
+    if (!empty($this->referrer)) {
+      $headers['Referer'] = $this->referrer;
+    }
+    return $headers;
+  }
+
+  /**
    * Fetches a single post.
    */
   public function getPost(string $post_shortcode) {
@@ -35,6 +72,21 @@ class Instagram extends GenericScraper {
     $method = 'GET';
     $url = 'https://instagram.com/' . $user_name . '/';
     $body = $this->doHttp($method, $url);
+    if (!empty($cursor)) {
+      $this->referrer = $url;
+      $commons_js_url = $this->findConsumerLibCommonsJsUrl($body);
+      $profile_js_url = $this->findProfilePageContainerJsUrl($body);
+      if ($this->debug) {
+        print_r([
+          'commons_url' => $commons_js_url,
+          'module_url' => $profile_js_url,
+        ]);
+        print PHP_EOL;
+      }
+      $this->setInstagramCommonsVars($commons_js_url, $profile_js_url, $body);
+      $body = $this->graphLookup('user', $user_name, 20, $cursor);
+      var_dump($body);
+    }
     return $this->decodeUserListHtml($body);
   }
 
@@ -45,7 +97,44 @@ class Instagram extends GenericScraper {
     $method = 'GET';
     $url = 'https://www.instagram.com/explore/tags/' . urlencode($hashtag) . '/';
     $body = $this->doHttp($method, $url);
+    if (!empty($cursor)) {
+      $this->referrer = $url;
+      $commons_js_url = $this->findConsumerLibCommonsJsUrl($body);
+      $tag_js_url = $this->findTagPageContainerJsUrl($body);
+      if ($this->debug) {
+        print_r([
+          'commons_url' => $commons_js_url,
+          'module_url' => $tag_js_url,
+        ]);
+        print PHP_EOL;
+      }
+      $this->setInstagramCommonsVars($commons_js_url, $tag_js_url, $body);
+      $body = $this->graphLookup('hashtag', $hashtag, 20, $cursor);
+      var_dump($body);
+    }
     return $this->decodeTagListHtml($body);
+  }
+
+  /**
+   * Do a GraphQL lookup.
+   */
+  protected function graphLookup($lookup_type, $lookup_value, $limit = 20, $cursor = NULL) {
+    $variables = [
+      'first' => $limit,
+      'after' => $cursor,
+    ];
+    if ($lookup_type === 'hashtag') {
+      $variables['tag_name'] = $lookup_value;
+    }
+    if ($lookup_type === 'user') {
+      $variables['id'] = $lookup_value;
+    }
+    $query_hash = $this->commonsVars['queryId'] ?? '0';
+
+    return $this->doHttp('get', 'https://www.instagram.com/graphql/query/', [
+      'variables' => json_encode($variables),
+      'query_hash' => $query_hash,
+    ]);
   }
 
   /**
@@ -84,6 +173,7 @@ class Instagram extends GenericScraper {
       return new PostList([
         'service' => 'instagram',
         'posts' => $posts,
+        'nextCursor' => $parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_owner_to_timeline_media']['end_cursor'] ?? NULL,
       ]);
     }
 
@@ -100,12 +190,17 @@ class Instagram extends GenericScraper {
     return $this->useCache($cache_bucket, $cache_key, function () use ($user_id, $node) {
       if (empty($this->userIdCache[$user_id])) {
         $post = $this->getPost($node['shortcode']);
-        $user_info = [
-          'userName' => $post->userName,
-          'userDisplayName' => $post->userDisplayName,
-          'userUrl' => $post->userUrl,
-          'userAvatarUrl' => $post->userAvatarUrl,
-        ];
+        if (!empty($post)) {
+          $user_info = [
+            'userName' => $post->userName,
+            'userDisplayName' => $post->userDisplayName,
+            'userUrl' => $post->userUrl,
+            'userAvatarUrl' => $post->userAvatarUrl,
+          ];
+        }
+        else {
+          $this->errors[] = 'Instagram::getPostUserInfo: No post found for shortcode ' . $node['shortcode'];
+        }
         $this->userIdCache[$user_id] = $user_info;
       }
       return $this->userIdCache[$user_id];
@@ -149,6 +244,7 @@ class Instagram extends GenericScraper {
       return new PostList([
         'service' => 'instagram',
         'posts' => $posts,
+        'nextCursor' => $parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media']['end_cursor'] ?? NULL,
       ]);
     }
 
@@ -251,6 +347,96 @@ class Instagram extends GenericScraper {
       $images = [$post['display_url']];
     }
     return [$images, $videos];
+  }
+
+  /**
+   * Find the main JS URL.
+   */
+  protected function findConsumerLibCommonsJsUrl($body) {
+    $reg = '/<script.+?src="(\/static\/bundles\/es6\/ConsumerLibCommons\.js\/[a-f0-9]+\.js)".*?><\/script>/';
+
+    $matched = preg_match($reg, $body, $matches);
+    // print $body . PHP_EOL;
+    // print $reg . PHP_EOL;
+    // print_r($matches);
+    // print PHP_EOL;
+    if ($matched) {
+      return 'https://www.instagram.com' . $matches[1];
+    }
+    return NULL;
+  }
+
+  /**
+   * Find the profile page JS URL.
+   */
+  protected function findProfilePageContainerJsUrl($body) {
+    $reg = '/<script.+?src="(\/static\/bundles\/es6\/ProfilePageContainer\.js\/[a-f0-9]+\.js)".*?><\/script>/';
+
+    $matched = preg_match($reg, $body, $matches);
+    if ($matched) {
+      return 'https://www.instagram.com' . $matches[1];
+    }
+    return NULL;
+  }
+
+  /**
+   * Find the profile page JS URL.
+   */
+  protected function findTagPageContainerJsUrl($body) {
+    $reg = '/<script.+?src="(\/static\/bundles\/es6\/TagPageContainer\.js\/[a-f0-9]+\.js)".*?><\/script>/';
+
+    $matched = preg_match($reg, $body, $matches);
+    if ($matched) {
+      return 'https://www.instagram.com' . $matches[1];
+    }
+    return NULL;
+  }
+
+  /**
+   * Find variables from the Instagram Commons JS file.
+   */
+  protected function setInstagramCommonsVars($commons_url, $module_url, $body) {
+    $commons_body = $this->doHttp('get', $commons_url);
+    $module_body = $this->doHttp('get', $module_url);
+    $vars = [
+      'instagramWebDesktopFBAppId' => NULL,
+      'csrfToken' => NULL,
+      'igWWWClaim' => NULL,
+      'rolloutHash' => NULL,
+      'queryId' => NULL,
+    ];
+
+    $web_desktop_fb_app_id_reg = '/e\.instagramWebDesktopFBAppId=\'([0-9]+)\'/';
+    $wdaid_matched = preg_match($web_desktop_fb_app_id_reg, $commons_body, $wdaid_matches);
+    if ($wdaid_matched) {
+      $vars['instagramWebDesktopFBAppId'] = $wdaid_matches[1];
+    }
+
+    $query_id_reg = '/queryId:"([0-9a-f]+)",queryParams:t=>\(\{id:[a-z]\}\)/';
+    $qid_matched = preg_match($query_id_reg, $module_body, $qid_matches);
+    // if ($this->debug) {
+    //   print $module_body . PHP_EOL;
+    //   print $query_id_reg . PHP_EOL;
+    //   print_r($qid_matches);
+    //   print PHP_EOL;
+    // }
+    if ($qid_matched) {
+      $vars['queryId'] = $qid_matches[1];
+    }
+
+    $shared_data = $this->findSharedData($body);
+    if (!empty($shared_data['config']['csrf_token'])) {
+      $vars['csrfToken'] = $shared_data['config']['csrf_token'];
+    }
+    if (!empty($shared_data['config']['rollout_hash'])) {
+      $vars['rolloutHash'] = $shared_data['config']['rollout_hash'];
+    }
+
+    if (!empty($this->lastHeaders['x-ig-set-www-claim'])) {
+      $vars['igWWWClaim'] = $this->lastHeaders['x-ig-set-www-claim'];
+    }
+
+    $this->commonsVars = $vars;
   }
 
 }

@@ -39,6 +39,13 @@ class GenericScraper {
   public $debug = FALSE;
 
   /**
+   * Last received headers.
+   *
+   * @var array
+   */
+  public $lastHeaders = [];
+
+  /**
    * Constructor.
    */
   public function __construct() {
@@ -54,7 +61,10 @@ class GenericScraper {
   protected function cacheBucketKey($function_name, $cache_key_base) {
     $path = explode('\\', get_called_class());
     $class_name = array_pop($path);
-    return [$class_name . '::' . $function_name, hash('sha256', $cache_key_base)];
+    return [
+      $class_name . '::' . $function_name,
+      hash('sha256', $cache_key_base),
+    ];
   }
 
   /**
@@ -105,17 +115,37 @@ class GenericScraper {
   /**
    * Do HTTP request.
    */
-  protected function doHttp($method, $url) {
-    list($cache_bucket, $cache_key) = $this->cacheBucketKey('doHTTP', $method . ' ' . $url);
-    return $this->useCache($cache_bucket, $cache_key, function () use ($method, $url) {
+  protected function doHttp(string $method, string $url, array $body = []) {
+    list($cache_bucket, $cache_key) = $this->cacheBucketKey(
+      'doHTTP',
+      $method . ' ' . $url . ' ' . json_encode($body)
+    );
+    return $this->useCache($cache_bucket, $cache_key, function () use ($method, $url, $body) {
       $headers = $this->doHttpHeaders();
+      $req_params = ['headers' => $headers];
+      if (!empty($body)) {
+        if (strtolower($method) === 'get') {
+          $req_params['query'] = $body;
+        }
+      }
+      if ($this->debug) {
+        print $method . ' ' . $url . ': ' .
+          print_r($req_params, TRUE) . PHP_EOL;
+      }
       try {
         $result = $this->client->request(
           strtoupper($method),
           $url,
-          ['headers' => $headers]
+          $req_params
         );
-        return $result->getBody()->getContents();
+        $this->lastHeaders = $result->getHeaders();
+        $body = $result->getBody()->getContents();
+        if ($this->debug) {
+          print $result->getStatusCode() . ': ' .
+            strlen($body) . ', ' .
+            print_r($this->lastHeaders, TRUE) . PHP_EOL;
+        }
+        return $body;
       }
       catch (TransferException $e) {
         if ($this->debug) {
@@ -123,7 +153,9 @@ class GenericScraper {
             $e->getResponse()->getStatusCode() . ': ' .
             $e->getMessage() . PHP_EOL;
         }
-        $this->errors[] = $e->getResponse()->getStatusCode() . ': ' . $e->getMessage();
+        $this->lastHeaders = $e->getResponse()->getHeaders();
+        $this->errors[] = $e->getResponse()->getStatusCode() . ': ' .
+          $e->getMessage();
         return FALSE;
       }
     });
