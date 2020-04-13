@@ -3,6 +3,7 @@
 namespace Rtrvrtg\SocialScraper\Scraper;
 
 use Rtrvrtg\SocialScraper\Scraper\GenericScraper;
+use Rtrvrtg\SocialScraper\Scraper\Instagram\QueryGenerator;
 use Rtrvrtg\SocialScraper\Post;
 use Rtrvrtg\SocialScraper\PostList;
 
@@ -33,6 +34,21 @@ class Instagram extends GenericScraper {
   protected $referrer;
 
   /**
+   * Query generator.
+   *
+   * @var Rtrvrtg\SocialScraper\Scraper\Instagram\QueryGenerator
+   */
+  protected $queryGen;
+
+  /**
+   * Constructor.
+   */
+  public function __construct() {
+    parent::__construct();
+    $this->queryGen = new QueryGenerator();
+  }
+
+  /**
    * {@inheritdoc}
    */
   protected function doHttpHeaders() {
@@ -48,6 +64,9 @@ class Instagram extends GenericScraper {
     }
     if (!empty($this->commonsVars['igWWWClaim'])) {
       $headers['X-IG-WWW-Claim'] = $this->commonsVars['igWWWClaim'];
+    }
+    if (!empty($this->commonsVars['igGis'])) {
+      $headers['X-Instagram-GIS'] = $this->commonsVars['igGis'];
     }
     if (!empty($this->referrer)) {
       $headers['Referer'] = $this->referrer;
@@ -69,10 +88,13 @@ class Instagram extends GenericScraper {
    * Fetches a list of user posts.
    */
   public function userList(string $user_name, $cursor = NULL) {
+    $is_json = FALSE;
     $method = 'GET';
     $url = 'https://instagram.com/' . $user_name . '/';
     $body = $this->doHttp($method, $url);
     if (!empty($cursor)) {
+      $this->extractUserInfoHtml($body);
+      $is_json = TRUE;
       $this->referrer = $url;
       $commons_js_url = $this->findConsumerLibCommonsJsUrl($body);
       $profile_js_url = $this->findProfilePageContainerJsUrl($body);
@@ -84,20 +106,25 @@ class Instagram extends GenericScraper {
         print PHP_EOL;
       }
       $this->setInstagramCommonsVars($commons_js_url, $profile_js_url, $body);
-      $body = $this->graphLookup('user', $user_name, 20, $cursor);
-      var_dump($body);
+      $user_info = $this->getUserInfo($user_name);
+      if (empty($user_info)) {
+        throw new \Exception('Instagram::userList: Could not obtain user id for username ' . $user_name);
+      }
+      $body = $this->graphLookup('user', $user_info['id'], 20, $cursor);
     }
-    return $this->decodeUserListHtml($body);
+    return $this->decodeUserListHtml($body, $is_json);
   }
 
   /**
    * Fetches a list of posts for a hashtag.
    */
   public function hashtagList(string $hashtag, $cursor = NULL) {
+    $is_json = FALSE;
     $method = 'GET';
     $url = 'https://www.instagram.com/explore/tags/' . urlencode($hashtag) . '/';
     $body = $this->doHttp($method, $url);
     if (!empty($cursor)) {
+      $is_json = TRUE;
       $this->referrer = $url;
       $commons_js_url = $this->findConsumerLibCommonsJsUrl($body);
       $tag_js_url = $this->findTagPageContainerJsUrl($body);
@@ -110,57 +137,100 @@ class Instagram extends GenericScraper {
       }
       $this->setInstagramCommonsVars($commons_js_url, $tag_js_url, $body);
       $body = $this->graphLookup('hashtag', $hashtag, 20, $cursor);
-      var_dump($body);
     }
-    return $this->decodeTagListHtml($body);
+    return $this->decodeTagListHtml($body, $is_json);
   }
 
   /**
    * Do a GraphQL lookup.
    */
   protected function graphLookup($lookup_type, $lookup_value, $limit = 20, $cursor = NULL) {
-    $variables = [
-      'first' => $limit,
-      'after' => $cursor,
-    ];
+    $query = [];
     if ($lookup_type === 'hashtag') {
-      $variables['tag_name'] = $lookup_value;
+      $query = $this->queryGen->hashtagQuery($lookup_value, $cursor, $limit);
     }
-    if ($lookup_type === 'user') {
-      $variables['id'] = $lookup_value;
+    elseif ($lookup_type === 'user') {
+      $query = $this->queryGen->userQuery($lookup_value, $cursor, $limit);
     }
-    $query_hash = $this->commonsVars['queryId'] ?? '0';
 
-    return $this->doHttp('get', 'https://www.instagram.com/graphql/query/', [
-      'variables' => json_encode($variables),
-      'query_hash' => $query_hash,
-    ]);
+    if (empty($query)) {
+      return FALSE;
+    }
+
+    $this->commonsVars['igGis'] = md5(
+      ($this->commonsVars['igGis'] ?? '') .
+      ':' .
+      $query['query']['variables'] ?? '{}'
+    );
+
+    return $this->doHttp($query['method'], $query['url'], $query['query']);
+  }
+
+  /**
+   * Extract user info.
+   */
+  protected function extractUserInfoHtml($body) {
+    $parsed = $this->findSharedData($body);
+
+    // Set user data on first user page load.
+    if (!empty($parsed['entry_data']['ProfilePage'][0]['graphql']['user'])) {
+      $this->setUserInfo($parsed['entry_data']['ProfilePage'][0]['graphql']['user']);
+    }
   }
 
   /**
    * Decodes a getPost request.
    */
-  protected function decodeUserListHtml($body) {
-    $parsed = $this->findSharedData($body);
+  protected function decodeUserListHtml($body, bool $is_json = FALSE) {
+    $parsed = (
+      $is_json ?
+      json_decode($body, TRUE) :
+      $this->findSharedData($body)
+    );
 
+    // Set user data on first user page load.
+    if (
+      !$is_json &&
+      !empty($parsed['entry_data']['ProfilePage'][0]['graphql']['user'])
+    ) {
+      $this->setUserInfo($parsed['entry_data']['ProfilePage'][0]['graphql']['user']);
+    }
+
+    $user_data = [];
     if (
       !empty($parsed) &&
-      !empty($parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges'])
+      !empty($parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media'])
     ) {
+      $user_data = $parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media'];
+    }
+    elseif (
+      !empty($parsed) &&
+      !empty($parsed['data']['user'])
+    ) {
+      $user_data = $parsed['data']['user']['edge_owner_to_timeline_media'];
+    }
+
+    if (!empty($user_data)) {
       $posts = array_map(function ($e) {
         $node = $e['node'];
         list($images, $videos) = $this->postMedia($node);
-        $post = new Post([
-          'service' => 'instagram',
-          'postId' => $node['id'],
-          'postUrl' => 'https://instagram.com/p/' . $node['shortcode'] . '/',
+        $user_info = $this->getPostUserInfo($node) ?? [
           'userName' => $node['owner']['username'],
           'userDisplayName' => '',
           'userUrl' => 'https://instagram.com/' . $node['owner']['username'] . '/',
           'userAvatarUrl' => '',
+        ];
+        $post = new Post([
+          'service' => 'instagram',
+          'postId' => $node['id'],
+          'postUrl' => 'https://instagram.com/p/' . $node['shortcode'] . '/',
+          'userName' => $user_info['userName'],
+          'userDisplayName' => $user_info['userDisplayName'],
+          'userUrl' => $user_info['userUrl'],
+          'userAvatarUrl' => $user_info['userAvatarUrl'],
           'created' => $node['taken_at_timestamp'],
           'text' => $node['edge_media_to_caption']['edges'][0]['node']['text'] ?? '',
-          'accessibilityCaption' => $node['accessibility_caption'],
+          'accessibilityCaption' => $node['accessibility_caption'] ?? '',
           'images' => $images,
           'videos' => $videos,
           'intents' => [],
@@ -168,12 +238,12 @@ class Instagram extends GenericScraper {
         ]);
 
         return $post;
-      }, $parsed['entry_data']['ProfilePage'][0]['graphql']['user']['edge_owner_to_timeline_media']['edges']);
+      }, $user_data['edges'] ?? []);
 
       return new PostList([
         'service' => 'instagram',
         'posts' => $posts,
-        'nextCursor' => $parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_owner_to_timeline_media']['end_cursor'] ?? NULL,
+        'nextCursor' => $user_data['end_cursor'] ?? NULL,
       ]);
     }
 
@@ -188,10 +258,21 @@ class Instagram extends GenericScraper {
 
     list($cache_bucket, $cache_key) = $this->cacheBucketKey('getPostUserInfo', $user_id);
     return $this->useCache($cache_bucket, $cache_key, function () use ($user_id, $node) {
-      if (empty($this->userIdCache[$user_id])) {
+      if (
+        empty($this->userIdCache[$user_id]) ||
+        empty($this->userIdCache[$user_id]['userName'])
+      ) {
+        $user_info = [
+          'id' => NULL,
+          'userName' => NULL,
+          'userDisplayName' => NULL,
+          'userUrl' => NULL,
+          'userAvatarUrl' => NULL,
+        ];
         $post = $this->getPost($node['shortcode']);
         if (!empty($post)) {
           $user_info = [
+            'id' => $user_id,
             'userName' => $post->userName,
             'userDisplayName' => $post->userDisplayName,
             'userUrl' => $post->userUrl,
@@ -201,26 +282,72 @@ class Instagram extends GenericScraper {
         else {
           $this->errors[] = 'Instagram::getPostUserInfo: No post found for shortcode ' . $node['shortcode'];
         }
-        $this->userIdCache[$user_id] = $user_info;
+        if (!empty($user_info)) {
+          $this->userIdCache[$user_id] = $user_info;
+        }
       }
-      return $this->userIdCache[$user_id];
+      return $this->userIdCache[$user_id] ?? NULL;
     });
+  }
+
+  /**
+   * Set user info from user page data.
+   */
+  protected function setUserInfo(array $user_data) {
+    $user_info = [
+      'id' => $user_data['id'],
+      'userName' => $user_data['username'],
+      'userDisplayName' => $user_data['full_name'] ?? '',
+      'userUrl' => 'https://instagram.com/' . $user_data['username'] . '/',
+      'userAvatarUrl' => $user_data['profile_pic_url'],
+    ];
+    $this->userIdCache[$user_info['id']] = $user_info;
+  }
+
+  /**
+   * Get user info by username.
+   */
+  protected function getUserInfo(string $username) {
+    $candidates = array_filter($this->userIdCache, function ($i) use ($username) {
+      return $i['userName'] == $username;
+    });
+    return !empty($candidates) ? reset($candidates) : NULL;
   }
 
   /**
    * Decodes a hashtagList request.
    */
-  protected function decodeTagListHtml($body) {
-    $parsed = $this->findSharedData($body);
+  protected function decodeTagListHtml($body, bool $is_json = FALSE) {
+    $parsed = (
+      $is_json ?
+      json_decode($body, TRUE) :
+      $this->findSharedData($body)
+    );
 
+    $hashtag_data = [];
     if (
       !empty($parsed) &&
-      !empty($parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media']['edges'])
+      !empty($parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media'])
     ) {
+      $hashtag_data = $parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media'];
+    }
+    elseif (
+      !empty($parsed) &&
+      !empty($parsed['data']['hashtag']['edge_hashtag_to_media'])
+    ) {
+      $hashtag_data = $parsed['data']['hashtag']['edge_hashtag_to_media'];
+    }
+
+    if (!empty($hashtag_data)) {
       $posts = array_map(function ($e) {
         $node = $e['node'];
         list($images, $videos) = $this->postMedia($node);
-        $user_info = $this->getPostUserInfo($node);
+        $user_info = $this->getPostUserInfo($node) ?? [
+          'userName' => $node['owner']['username'],
+          'userDisplayName' => '',
+          'userUrl' => 'https://instagram.com/' . $node['owner']['username'] . '/',
+          'userAvatarUrl' => '',
+        ];
         $post = new Post([
           'service' => 'instagram',
           'postId' => $node['id'],
@@ -231,7 +358,7 @@ class Instagram extends GenericScraper {
           'userAvatarUrl' => $user_info['userAvatarUrl'],
           'created' => $node['taken_at_timestamp'],
           'text' => $node['edge_media_to_caption']['edges'][0]['node']['text'] ?? '',
-          'accessibilityCaption' => $node['accessibility_caption'],
+          'accessibilityCaption' => $node['accessibility_caption'] ?? '',
           'images' => $images,
           'videos' => $videos,
           'intents' => [],
@@ -239,12 +366,12 @@ class Instagram extends GenericScraper {
         ]);
 
         return $post;
-      }, $parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media']['edges']);
+      }, $hashtag_data['edges'] ?? []);
 
       return new PostList([
         'service' => 'instagram',
         'posts' => $posts,
-        'nextCursor' => $parsed['entry_data']['TagPage'][0]['graphql']['hashtag']['edge_hashtag_to_media']['end_cursor'] ?? NULL,
+        'nextCursor' => $hashtag_data['end_cursor'] ?? NULL,
       ]);
     }
 
@@ -356,10 +483,6 @@ class Instagram extends GenericScraper {
     $reg = '/<script.+?src="(\/static\/bundles\/es6\/ConsumerLibCommons\.js\/[a-f0-9]+\.js)".*?><\/script>/';
 
     $matched = preg_match($reg, $body, $matches);
-    // print $body . PHP_EOL;
-    // print $reg . PHP_EOL;
-    // print_r($matches);
-    // print PHP_EOL;
     if ($matched) {
       return 'https://www.instagram.com' . $matches[1];
     }
@@ -404,24 +527,13 @@ class Instagram extends GenericScraper {
       'igWWWClaim' => NULL,
       'rolloutHash' => NULL,
       'queryId' => NULL,
+      'igGis' => $this->commonsVars['igGis'] ?? NULL,
     ];
 
     $web_desktop_fb_app_id_reg = '/e\.instagramWebDesktopFBAppId=\'([0-9]+)\'/';
     $wdaid_matched = preg_match($web_desktop_fb_app_id_reg, $commons_body, $wdaid_matches);
     if ($wdaid_matched) {
       $vars['instagramWebDesktopFBAppId'] = $wdaid_matches[1];
-    }
-
-    $query_id_reg = '/queryId:"([0-9a-f]+)",queryParams:t=>\(\{id:[a-z]\}\)/';
-    $qid_matched = preg_match($query_id_reg, $module_body, $qid_matches);
-    // if ($this->debug) {
-    //   print $module_body . PHP_EOL;
-    //   print $query_id_reg . PHP_EOL;
-    //   print_r($qid_matches);
-    //   print PHP_EOL;
-    // }
-    if ($qid_matched) {
-      $vars['queryId'] = $qid_matches[1];
     }
 
     $shared_data = $this->findSharedData($body);

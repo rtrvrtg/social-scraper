@@ -40,7 +40,7 @@ final class InstagramTest extends TestCase {
    */
   public function testGetUserListWithCursor() {
     $i = new Instagram();
-    $i->debug = TRUE;
+    $i->debug = FALSE;
     $result = $i->userList('retrovertigo', 'QVFBXzFiQklxd2x1Mk0waHJncnFPYUVXTmlRdVVudXEwTmxPOUI0dW85T3RpdWRkV241VkQxYW9jMWE3cVZWRXdEMG95eDh6S2I2MFJobVplRHZUUmhjTQ==');
     $this->assertEquals([], $i->getErrors());
     $this->assertNotEmpty($result->posts);
@@ -65,7 +65,7 @@ final class InstagramTest extends TestCase {
    */
   public function testGetHashtagListWithCursor() {
     $i = new Instagram();
-    $i->debug = TRUE;
+    $i->debug = FALSE;
     $result = $i->hashtagList('ibis', 'QVFCWEFTNFJCMWt4ZUtfQXV6UVpzYzdJUWhpM056RkVtb3dVdlBZVGNKcFdRYXBKSFlJMTZtNU02ai02X0tSNDBmS2lnYUNmUFpYZTc4T3AtclVJX1p4cA==');
     $this->assertEquals([], $i->getErrors());
     $this->assertNotEmpty($result->posts);
